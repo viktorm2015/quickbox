@@ -531,7 +531,7 @@ bool TableModel::setDirty(int row_ix, const QString &col_name, bool d)
 	return setDirty(row_ix, col_ix, d);
 }
 
-qf::core::utils::TableRow TableModel::tableRow(int row_no)
+qf::core::utils::TableRow TableModel::tableRow(int row_no) const
 {
 	return m_table.row(row_no);
 }
@@ -600,7 +600,7 @@ int TableModel::columnIndex(const QString &column_name) const
 {
 	int ret = -1, i = 0;
 	Q_FOREACH(auto cd, m_columns) {
-		//qfTrash() << "\ttrying:" << cd.fieldName();
+		//qfInfo() << cd.fieldName() << "vs." << column_name;
 		if(qfc::Utils::fieldNameEndsWith(cd.fieldName(), column_name)) {
 			ret = i;
 			break;

@@ -154,17 +154,16 @@ void EventPlugin::onInstalled()
 	connect(m_actConnectDb, SIGNAL(triggered()), this, SLOT(connectToSqlServer()));
 
 	m_actOpenEvent = new qfw::Action(tr("&Open event"));
-	m_actOpenEvent->setShortcut("Ctrl+O");
+	//m_actOpenEvent->setShortcut("Ctrl+O");
 	m_actOpenEvent->setEnabled(false);
 	connect(m_actOpenEvent, SIGNAL(triggered()), this, SLOT(openEvent()));
 
 	m_actCreateEvent = new qfw::Action(tr("Create eve&nt"));
-	m_actCreateEvent->setShortcut("Ctrl+N");
+	//m_actCreateEvent->setShortcut("Ctrl+N");
 	m_actCreateEvent->setEnabled(false);
 	connect(m_actCreateEvent, SIGNAL(triggered()), this, SLOT(createEvent()));
 
 	m_actEditEvent = new qfw::Action(tr("E&dit event"));
-	//m_actEditEvent->setShortcut("Ctrl+N");
 	m_actEditEvent->setEnabled(false);
 	connect(m_actEditEvent, SIGNAL(triggered()), this, SLOT(editEvent()));
 	connect(this, &EventPlugin::eventNameChanged, [this](const QString &event_name) {
@@ -293,6 +292,18 @@ void EventPlugin::emitDbEvent(const QString &domain, const QVariant &payload, bo
 	if(!q.exec(qs)) {
 		qfError() << "emitDbEventNotify Error:" << qs << q.lastError().text();
 	}
+}
+
+QString EventPlugin::classNameById(int class_id)
+{
+	if(m_classNameCache.isEmpty()) {
+		qf::core::sql::Query q;
+		q.exec("SELECT id, name FROM classes");
+		while (q.next()) {
+			m_classNameCache[q.value(0).toInt()] = q.value(1).toString();
+		}
+	}
+	return m_classNameCache.value(class_id);
 }
 
 DbSchema EventPlugin::dbSchema()
@@ -608,6 +619,7 @@ void EventPlugin::editEvent()
 bool EventPlugin::closeEvent()
 {
 	qfLogFuncFrame();
+	m_classNameCache.clear();
 	setEventName(QString());
 	QF_SAFE_DELETE(m_eventConfig);
 	emit eventOpened(eventName()); //comment it till QE can load event with invalid name
@@ -662,10 +674,14 @@ bool EventPlugin::openEvent(const QString &_event_name)
 		}
 		//Log.info(event_name, typeof event_name, (event_name)? "T": "F");
 		{
-			qfs::Connection conn(QSqlDatabase::database());
-			conn.close();
-			qfInfo() << "removing database:" << conn.connectionName();
-			QSqlDatabase::removeDatabase(conn.connectionName());
+			QString conn_name;
+			{
+				qfs::Connection conn(QSqlDatabase::database());
+				conn_name = conn.connectionName();
+				conn.close();
+			}
+			qfInfo() << "removing database:" << conn_name;
+			QSqlDatabase::removeDatabase(conn_name);
 			QSqlDatabase::addDatabase("QSQLITE");
 		}
 		if(event_fn.isEmpty()) {
@@ -710,7 +726,7 @@ void EventPlugin::setDbOpen(bool ok)
 	}
 }
 
-static QString copy_sql_table(const QString &table_name, const QSqlRecord &rec, qfs::Connection &from_conn, qfs::Connection &to_conn)
+static QString copy_sql_table(const QString &table_name, const QSqlRecord &dest_rec, qfs::Connection &from_conn, qfs::Connection &to_conn)
 {
 	qfLogFuncFrame() << table_name;
 	qfInfo() << "Copying table:" << table_name;
@@ -722,6 +738,16 @@ static QString copy_sql_table(const QString &table_name, const QSqlRecord &rec, 
 	if(!from_q.exec(QString("SELECT * FROM %1").arg(table_name))) {
 		qfWarning() << "Source table" << table_name << "doesn't exist!";
 		return QString();
+	}
+	const QSqlRecord src_rec = from_q.record();
+	// copy only fields which can be found in both records
+	QSqlRecord rec;
+	for (int i = 0; i < dest_rec.count(); ++i) {
+		QString fld_name = dest_rec.fieldName(i);
+		if(src_rec.indexOf(fld_name) >= 0) {
+			qfDebug() << fld_name << "\t added to imported fields since it is present in both databases";
+			rec.append(dest_rec.field(i));
+		}
 	}
 	auto *sqldrv = to_conn.driver();
 	QString qs = sqldrv->sqlStatement(QSqlDriver::InsertStatement, table_name, rec, true);
@@ -840,10 +866,12 @@ void EventPlugin::importEvent_qbe()
 {
 	qfLogFuncFrame();
 	qff::MainWindow *fwk = qff::MainWindow::frameWork();
+	/*
 	if(connectionType() != ConnectionType::SqlServer) {
 		qfd::MessageBox::showError(fwk, tr("Data file can be imported to SQL server only!"));
 		return;
 	}
+	*/
 	QString ext = ".qbe";
 	QString fn = qf::qmlwidgets::dialogs::FileDialog::getOpenFileName (fwk, tr("Import as Quick Event"), QString(), "Quick Event files *.qbe (*.qbe)");
 	if(fn.isEmpty())
@@ -851,7 +879,8 @@ void EventPlugin::importEvent_qbe()
 	QString event_name = QInputDialog::getText(fwk, tr("Query"), tr("Event will be imported as ID:")).trimmed();
 	if(event_name.isEmpty())
 		return;
-	if(existingSqlEventNames().contains(event_name)) {
+	QStringList existing_events = (connectionType() == ConnectionType::SingleFile)? existingFileEventNames(): existingSqlEventNames();
+	if(existing_events.contains(event_name)) {
 		qfd::MessageBox::showError(fwk, tr("Event ID '%1' exists already!").arg(event_name));
 		return;
 	}
@@ -860,7 +889,7 @@ void EventPlugin::importEvent_qbe()
 	QString import_connection_name = QStringLiteral("qe_import_connection");
 	QString export_connection_name = QStringLiteral("qe_export_connection");
 	do {
-		qfs::Connection current_conn(QSqlDatabase::database());
+		qfs::Connection current_conn = qfs::Connection::forName();
 
 		qfs::Connection imp_conn(QSqlDatabase::addDatabase("QSQLITE", import_connection_name));
 		imp_conn.setDatabaseName(fn);
@@ -871,12 +900,17 @@ void EventPlugin::importEvent_qbe()
 		}
 
 		qfs::Connection exp_conn(QSqlDatabase::addDatabase(current_conn.driverName(), export_connection_name));
-		exp_conn.setHostName(current_conn.hostName());
-		exp_conn.setPort(current_conn.port());
-		exp_conn.setUserName(current_conn.userName());
-		exp_conn.setPassword(current_conn.password());
-		exp_conn.setDatabaseName(current_conn.databaseName());
-		qfInfo() << "Opening export database file" << fn;
+		if(connectionType() == ConnectionType::SingleFile) {
+			exp_conn.setDatabaseName(eventNameToFileName(event_name));
+		}
+		else {
+			exp_conn.setHostName(current_conn.hostName());
+			exp_conn.setPort(current_conn.port());
+			exp_conn.setUserName(current_conn.userName());
+			exp_conn.setPassword(current_conn.password());
+			exp_conn.setDatabaseName(current_conn.databaseName());
+		}
+		qfInfo() << "Opening export database:" << exp_conn.databaseName();
 		if(!exp_conn.open()) {
 			qfd::MessageBox::showError(fwk, tr("Open Database Error: %1").arg(exp_conn.errorString()));
 			return;
@@ -921,7 +955,9 @@ void EventPlugin::importEvent_qbe()
 		qfd::MessageBox::showError(fwk, err_str);
 		return;
 	}
-	openEvent(event_name);
+	if(qfd::MessageBox::askYesNo(fwk, tr("Open imported event '%1'?").arg(event_name))) {
+		openEvent(event_name);
+	}
 }
 
 

@@ -185,7 +185,15 @@ Schema {
 					defaultValue: false;
 					notNull: true
 				},
+				Field { name: 'badCheck'; type: Boolean { }
+					defaultValue: false;
+					notNull: true
+				},
 				Field { name: 'cardLent'; type: Boolean { }
+					defaultValue: false;
+					notNull: true
+				},
+				Field { name: 'cardReturned'; type: Boolean { }
 					defaultValue: false;
 					notNull: true
 				}
@@ -209,7 +217,7 @@ Schema {
 					}
 				},
 				Index {fields: ['stageId']; references: ForeignKeyReference {table: 'stages'; fields: ['id']; } },
-				Index {fields: ['stageId, competitorId']; unique: true }, 
+				Index {fields: ['stageId, competitorId']; unique: true },
 				Index {fields: ['stageId, siId']; unique: true } // cannot be unique since Oris import sometimes contains duplicate SI
 			]
 		},
@@ -249,12 +257,12 @@ Schema {
 				Field { name: 'clubAbbr'; type: String { } },
 				Field { name: 'country'; type: String { } },
 				Field { name: 'siId'; type: Int { } },
-				Field { name: 'nameSearchKey'; type: String {} },
+				//Field { name: 'nameSearchKey'; type: String {} },
 				Field { name: 'importId'; type: Int { } }
 			]
 			indexes: [
-				Index {fields: ['registration'] },
-				Index {fields: ['nameSearchKey'] }
+				Index {fields: ['registration'] }
+				//Index {fields: ['nameSearchKey'] }
 			]
 		},
 		Table { name: 'cards'
@@ -361,7 +369,7 @@ Schema {
 		Insert {
 			table: config
 			rows: [
-				['db.version', qsTr('Data version'), '10003', 'int']
+				['db.version', qsTr('Data version'), '10004', 'int']
 				/*
 				['event.stageCount', qsTr('Stage count'), '0', 'int'],
 				['event.name', qsTr('Event name'), '', 'QString'],

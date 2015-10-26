@@ -30,6 +30,8 @@ public:
 	static const char* DBEVENTDOMAIN_CARDREADER_CARDREAD;
 	static const char* DBEVENTDOMAIN_CARDREADER_PUNCHRECORD;
 	static const QLatin1String SETTINGS_PREFIX;
+	static const int FINISH_PUNCH_CODE;
+	static const int FINISH_PUNCH_POS;
 
 	QF_PROPERTY_IMPL2(int, c, C, urrentCardCheckerIndex, -1)
 
@@ -48,7 +50,7 @@ public:
 	bool updateCheckedCardValuesSql(const CheckedCard &checked_card);
 	bool saveCardAssignedRunnerIdSql(int card_id, int run_id);
 
-	Q_INVOKABLE bool reloadTimesFromCard(int run_id);
+	Q_INVOKABLE bool reloadTimesFromCard(int card_id, int run_id = 0);
 private:
 	void onInstalled();
 	QQmlListProperty<CardChecker> cardCheckersListProperty();

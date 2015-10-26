@@ -183,9 +183,12 @@ void TableView::refreshActions()
 	//qfDebug() << "\tdelete allowed:" << is_delete_rows_allowed;
 	//qfDebug() << "\tedit allowed:" << is_edit_rows_allowed;
 	//action("insertRow")->setVisible(is_insert_rows_allowed && isInsertRowActionVisible());
-	action("cloneRow")->setEnabled(is_copy_rows_allowed);
+	Action *a_insert_row = action("insertRow");
+	Action *a_remove_sel_rows = action("removeSelectedRows");
+	Action *a_clone_row = action("cloneRow");
+	a_clone_row->setEnabled(a_clone_row->isVisible() && is_copy_rows_allowed);
 	//action("cloneRow")->setVisible(iscloneRowActionVisible());
-	action("removeSelectedRows")->setEnabled(is_delete_rows_allowed);// && action("removeSelectedRows")->isVisible());
+	a_remove_sel_rows->setEnabled(a_remove_sel_rows->isVisible() && is_delete_rows_allowed);
 	//action("postRow")->setVisible((is_edit_rows_allowed || is_insert_rows_allowed) && action("postRow")->isVisible());
 	//action("revertRow")->setVisible(action("postRow")->isVisible() && action("revertRow")->isVisible());
 	//action("editRowExternal")->setVisible(is_edit_rows_allowed && action("editRowExternal")->isVisible());
@@ -200,8 +203,8 @@ void TableView::refreshActions()
 		action("revertRow")->setEnabled(true);
 	}
 	else {
-		action("insertRow")->setEnabled(is_insert_rows_allowed);
-		action("cloneRow")->setEnabled(is_copy_rows_allowed && curr_ix.isValid());
+		a_insert_row->setEnabled(a_insert_row->isVisible() && is_insert_rows_allowed);
+		a_clone_row->setEnabled(a_clone_row->isVisible() && is_copy_rows_allowed && curr_ix.isValid());
 		action("reload")->setEnabled(true);
 		//action("sortAsc")->setEnabled(true);
 		//action("sortDesc")->setEnabled(true);
@@ -271,6 +274,24 @@ void TableView::enableAllActions(bool on)
 		a->setEnabled(on);
 		//if(on) a->setVisible(true);
 	}
+}
+
+void TableView::setInsertRowEnabled(bool b)
+{
+	Action *a = action(QStringLiteral("insertRow"));
+	a->setVisible(b);
+}
+
+void TableView::setRemoveRowEnabled(bool b)
+{
+	Action *a = action(QStringLiteral("removeSelectedRows"));
+	a->setVisible(b);
+}
+
+void TableView::setCloneRowEnabled(bool b)
+{
+	Action *a = action(QStringLiteral("cloneRow"));
+	a->setVisible(b);
 }
 
 void TableView::insertRow()
@@ -1915,7 +1936,7 @@ bool TableView::edit(const QModelIndex& index, EditTrigger trigger, QEvent* even
 			ret = true;
 			//return ret;
 		}
-		bool read_only = false;
+		bool read_only = isReadOnly();
 		/*
 		if(!read_only) {
 			qfc::model::TableModel *m = tableModel();
@@ -1923,45 +1944,47 @@ bool TableView::edit(const QModelIndex& index, EditTrigger trigger, QEvent* even
 		}
 		*/
 		try {
+			ret = false;
+			bool inline_editor_called = false;
+			int orig_check_state = index.data(Qt::CheckStateRole).toInt();
 			if(rowEditorMode() == EditRowsInline) {
 				if(!read_only) {
 					qfDebug() << "\t RowEditorInline";
-					int orig_check_state = index.data(Qt::CheckStateRole).toInt();
-					ret = QTableView::edit(index, trigger, event);
+					inline_editor_called = QTableView::edit(index, trigger, event);
 					qfDebug() << "\t QTableView::edit() returned:" << ret;
-					if(ret) {
-						int new_check_state = index.data(Qt::CheckStateRole).toInt();
-						if(orig_check_state != new_check_state) {
-							/// handle bool values changes
-							/// booleans are not using editor created by ItemDelegate, but set model data directly using Qt::CheckStateRole
-							qfDebug() << "check state changed:" << orig_check_state << "->" << new_check_state;
-							if(inlineEditSaveStrategy() == OnEditedValueCommit) {
-								postRow(currentIndex().row());
-							}
-							refreshActions();
-						}
-					}
 				}
 			}
 			else  if(rowEditorMode() == EditRowsExternal || rowEditorMode() == EditRowsMixed) {
-				ret = false;
 				if(rowEditorMode() == EditRowsMixed) {
-					ret = QTableView::edit(index, trigger, event);
+					inline_editor_called = QTableView::edit(index, trigger, event);
 					qfDebug() << "\t RowEditorMixed QTableView::edit() returned:" << ret;
 				}
-				if(!ret) {
-					if(trigger == QTableView::DoubleClicked || trigger == QTableView::EditKeyPressed) {
-						if(read_only) {
-						}
-						else {
-							QVariant id = selectedRow().value(idColumnName());
-							if(id.isValid()) {
-								emit editRowInExternalEditor(id, ModeEdit);
-							}
-						}
-						ret = false;
-						event->accept();
+			}
+			if(inline_editor_called) {
+				int new_check_state = index.data(Qt::CheckStateRole).toInt();
+				qfDebug() << "check state changed:" << orig_check_state << "->" << new_check_state;
+				if(orig_check_state != new_check_state) {
+					/// handle bool values changes
+					/// booleans are not using editor created by ItemDelegate, but set model data directly using Qt::CheckStateRole
+					if(inlineEditSaveStrategy() == OnEditedValueCommit) {
+						postRow(currentIndex().row());
 					}
+					refreshActions();
+				}
+				ret = true;
+			}
+			else {
+				if(trigger == QTableView::DoubleClicked || trigger == QTableView::EditKeyPressed) {
+					if(read_only) {
+					}
+					else {
+						QVariant id = selectedRow().value(idColumnName());
+						if(id.isValid()) {
+							emit editRowInExternalEditor(id, ModeEdit);
+						}
+					}
+					ret = false;
+					event->accept();
 				}
 			}
 		}

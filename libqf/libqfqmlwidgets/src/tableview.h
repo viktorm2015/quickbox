@@ -67,8 +67,9 @@ public:
 	QF_PROPERTY_IMPL2(QString, i, I, dColumnName, QStringLiteral("id"))
 	QF_PROPERTY_BOOL_IMPL2(s, S, howExceptionDialog, true)
 	QF_PROPERTY_BOOL_IMPL(r, R, eadOnly)
-	public:
-		QSortFilterProxyModel* sortFilterProxyModel() const;
+
+public:
+	QSortFilterProxyModel* sortFilterProxyModel() const;
 	qf::core::model::TableModel* tableModel() const;
 	void setTableModel(qf::core::model::TableModel* m);
 	Q_SIGNAL void tableModelChanged();
@@ -76,6 +77,9 @@ public:
 
 	Q_SLOT virtual void refreshActions();
 	QList<Action*> toolBarActions() const {return m_toolBarActions;}
+	void setInsertRowEnabled(bool b);
+	void setRemoveRowEnabled(bool b);
+	void setCloneRowEnabled(bool b);
 
 	Q_SLOT void resetColumnsSettings();
 
